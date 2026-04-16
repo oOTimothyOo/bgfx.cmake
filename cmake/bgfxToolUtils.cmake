@@ -571,21 +571,12 @@ if(TARGET bgfx::shaderc)
 	function(bgfx_compile_shaders)
 		set(options AS_HEADERS)
 		set(oneValueArgs TYPE VARYING_DEF OUTPUT_DIR OUT_FILES_VAR)
-		set(multiValueArgs SHADERS INCLUDE_DIRS DEFINES)
+		set(multiValueArgs SHADERS INCLUDE_DIRS DEFINES PROFILES)
 		cmake_parse_arguments(ARGS "${options}" "${oneValueArgs}" "${multiValueArgs}" "${ARGN}")
 
-		set(PROFILES spirv)
-		if(ARGS_TYPE STREQUAL "COMPUTE")
-			list(APPEND PROFILES 430 300_es)
-		else()
-			list(APPEND PROFILES 120 100_es)
-		endif()
-		if(BGFX_CONFIG_RENDERER_WEBGPU)
-			list(APPEND PROFILES wgsl)
-		endif()
+		# Detect platform
 		if(IOS)
 			set(PLATFORM IOS)
-			list(APPEND PROFILES metal)
 		elseif(ANDROID)
 			set(PLATFORM ANDROID)
 		elseif(UNIX AND NOT APPLE)
@@ -594,7 +585,6 @@ if(TARGET bgfx::shaderc)
 			set(PLATFORM ASM_JS)
 		elseif(APPLE)
 			set(PLATFORM OSX)
-			list(APPEND PROFILES metal)
 		elseif(
 			WIN32
 			OR MINGW
@@ -602,15 +592,33 @@ if(TARGET bgfx::shaderc)
 			OR CYGWIN
 		)
 			set(PLATFORM WINDOWS)
-			list(APPEND PROFILES s_5_0)
-			list(APPEND PROFILES s_6_0)
-		elseif(ORBIS) # ORBIS should be defined by a PS4 CMake toolchain
+		elseif(ORBIS)
 			set(PLATFORM ORBIS)
-			list(APPEND PROFILES pssl)
 		else()
-			# pssl for Agc and Gnm renderers
-			# nvn for Nvn renderer
 			message(error "shaderc: Unsupported platform")
+		endif()
+
+		# Select profiles (caller override or auto-detect)
+		if(ARGS_PROFILES)
+			set(PROFILES ${ARGS_PROFILES})
+		else()
+			set(PROFILES spirv)
+			if(ARGS_TYPE STREQUAL "COMPUTE")
+				list(APPEND PROFILES 430 300_es)
+			else()
+				list(APPEND PROFILES 120 100_es)
+			endif()
+			if(BGFX_CONFIG_RENDERER_WEBGPU)
+				list(APPEND PROFILES wgsl)
+			endif()
+			if(IOS OR APPLE)
+				list(APPEND PROFILES metal)
+			elseif(PLATFORM STREQUAL "WINDOWS")
+				list(APPEND PROFILES s_5_0)
+				list(APPEND PROFILES s_6_0)
+			elseif(PLATFORM STREQUAL "ORBIS")
+				list(APPEND PROFILES pssl)
+			endif()
 		endif()
 
 		set(ALL_OUTPUTS "")
@@ -643,7 +651,7 @@ if(TARGET bgfx::shaderc)
 					FILE ${SHADER_FILE_ABSOLUTE}
 					OUTPUT ${OUTPUT}
 					PROFILE ${PROFILE}
-					O "$<IF:$<CONFIG:Debug>:0,3>"
+					O "$<IF:$<CONFIG:Debug>,0,3>"
 					VARYINGDEF ${ARGS_VARYING_DEF}
 					INCLUDES ${BGFX_SHADER_INCLUDE_PATH} ${ARGS_INCLUDE_DIRS}
 					DEFINES ${ARGS_DEFINES}
