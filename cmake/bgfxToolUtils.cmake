@@ -565,40 +565,17 @@ if(TARGET bgfx::shaderc)
 	# 	OUT_FILES_VAR variable name
 	# 	INCLUDE_DIRS directories
 	# 	DEFINES defines
+	# 	[PROFILES profiles]
 	# 	[AS_HEADERS]
+	# 	[NO_SOURCE_GROUP]
 	# )
 	#
 	function(bgfx_compile_shaders)
-		set(options AS_HEADERS)
+		set(options AS_HEADERS NO_SOURCE_GROUP)
 		set(oneValueArgs TYPE VARYING_DEF OUTPUT_DIR OUT_FILES_VAR)
 		set(multiValueArgs SHADERS INCLUDE_DIRS DEFINES PROFILES)
 		cmake_parse_arguments(ARGS "${options}" "${oneValueArgs}" "${multiValueArgs}" "${ARGN}")
 
-		# Detect platform
-		if(IOS)
-			set(PLATFORM IOS)
-		elseif(ANDROID)
-			set(PLATFORM ANDROID)
-		elseif(UNIX AND NOT APPLE)
-			set(PLATFORM LINUX)
-		elseif(EMSCRIPTEN)
-			set(PLATFORM ASM_JS)
-		elseif(APPLE)
-			set(PLATFORM OSX)
-		elseif(
-			WIN32
-			OR MINGW
-			OR MSYS
-			OR CYGWIN
-		)
-			set(PLATFORM WINDOWS)
-		elseif(ORBIS)
-			set(PLATFORM ORBIS)
-		else()
-			message(error "shaderc: Unsupported platform")
-		endif()
-
-		# Select profiles (caller override or auto-detect)
 		if(ARGS_PROFILES)
 			set(PROFILES ${ARGS_PROFILES})
 		else()
@@ -611,19 +588,49 @@ if(TARGET bgfx::shaderc)
 			if(BGFX_CONFIG_RENDERER_WEBGPU)
 				list(APPEND PROFILES wgsl)
 			endif()
-			if(IOS OR APPLE)
+		endif()
+		if(IOS)
+			set(PLATFORM IOS)
+			if(NOT ARGS_PROFILES)
 				list(APPEND PROFILES metal)
-			elseif(PLATFORM STREQUAL "WINDOWS")
-				list(APPEND PROFILES s_5_0)
-				list(APPEND PROFILES s_6_0)
-			elseif(PLATFORM STREQUAL "ORBIS")
+			endif()
+		elseif(ANDROID)
+			set(PLATFORM ANDROID)
+		elseif(UNIX AND NOT APPLE)
+			set(PLATFORM LINUX)
+		elseif(EMSCRIPTEN)
+			set(PLATFORM ASM_JS)
+		elseif(APPLE)
+			set(PLATFORM OSX)
+			if(NOT ARGS_PROFILES)
+				list(APPEND PROFILES metal)
+			endif()
+		elseif(
+			WIN32
+			OR MINGW
+			OR MSYS
+			OR CYGWIN
+		)
+			set(PLATFORM WINDOWS)
+			if(NOT ARGS_PROFILES)
+				list(APPEND PROFILES s_5_0 s_6_0)
+			endif()
+		elseif(ORBIS) # ORBIS should be defined by a PS4 CMake toolchain
+			set(PLATFORM ORBIS)
+			if(NOT ARGS_PROFILES)
 				list(APPEND PROFILES pssl)
 			endif()
+		else()
+			# pssl for Agc and Gnm renderers
+			# nvn for Nvn renderer
+			message(error "shaderc: Unsupported platform")
 		endif()
 
 		set(ALL_OUTPUTS "")
 		foreach(SHADER_FILE ${ARGS_SHADERS})
-			source_group("Shaders" FILES "${SHADER}")
+			if(NOT ARGS_NO_SOURCE_GROUP)
+				source_group("Shaders" FILES "${SHADER_FILE}")
+			endif()
 			get_filename_component(SHADER_FILE_BASENAME ${SHADER_FILE} NAME)
 			get_filename_component(SHADER_FILE_NAME_WE ${SHADER_FILE} NAME_WE)
 			get_filename_component(SHADER_FILE_ABSOLUTE ${SHADER_FILE} ABSOLUTE)
@@ -640,6 +647,9 @@ if(TARGET bgfx::shaderc)
 				endif()
 				set(OUTPUT ${ARGS_OUTPUT_DIR}/${PROFILE_PATH_EXT}/${SHADER_FILE_BASENAME}.bin${HEADER_PREFIX})
 				set(PLATFORM_I ${PLATFORM})
+				if(PROFILE STREQUAL "spirv")
+					set(PLATFORM_I LINUX)
+				endif()
 				set(BIN2C_PART "")
 				if(ARGS_AS_HEADERS)
 					set(BIN2C_PART BIN2C ${SHADER_FILE_NAME_WE}_${PROFILE_EXT})
